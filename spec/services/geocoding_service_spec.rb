@@ -7,9 +7,9 @@ RSpec.describe GeocodingService do
     it "returns a Location with zip and coordinates" do
       Geocoder::Lookup::Test.add_stub(
         "1 Infinite Loop, Cupertino, CA",
-        [{ "coordinates" => [37.3318, -122.0312],
+        [ { "coordinates" => [ 37.3318, -122.0312 ],
            "postal_code" => "95014",
-           "address"     => "1 Infinite Loop, Cupertino, CA 95014, USA" }]
+           "address"     => "1 Infinite Loop, Cupertino, CA 95014, USA" } ]
       )
 
       location = described_class.call("1 Infinite Loop, Cupertino, CA")
@@ -20,7 +20,7 @@ RSpec.describe GeocodingService do
     end
 
     it "strips whitespace before looking up" do
-      Geocoder::Lookup::Test.add_stub("Cupertino, CA", [{ "coordinates" => [1, 2], "postal_code" => "95014" }])
+      Geocoder::Lookup::Test.add_stub("Cupertino, CA", [ { "coordinates" => [ 1, 2 ], "postal_code" => "95014" } ])
 
       expect(described_class.call("  Cupertino, CA  ").zip).to eq("95014")
     end
@@ -33,7 +33,7 @@ RSpec.describe GeocodingService do
     end
 
     it "raises MissingZip when the result has no postal code" do
-      Geocoder::Lookup::Test.add_stub("Paris", [{ "coordinates" => [48.85, 2.35], "postal_code" => nil }])
+      Geocoder::Lookup::Test.add_stub("Paris", [ { "coordinates" => [ 48.85, 2.35 ], "postal_code" => nil } ])
 
       expect { described_class.call("Paris") }
         .to raise_error(GeocodingService::MissingZip)
