@@ -95,6 +95,7 @@ GEM
       bigdecimal
       rexml
     crass (1.0.8)
+    csv (3.3.6)
     date (3.6.0)
     debug (1.11.1)
       irb (~> 1.10)
@@ -103,6 +104,9 @@ GEM
     drb (2.2.3)
     erb (6.0.7)
     erubi (1.13.1)
+    geocoder (1.8.6)
+      base64 (>= 0.1.0)
+      csv (>= 3.0.0)
     globalid (1.4.0)
       activesupport (>= 6.1)
     hashdiff (1.2.1)
@@ -330,6 +334,7 @@ DEPENDENCIES
   brakeman
   bundler-audit
   debug
+  geocoder
   importmap-rails
   propshaft
   puma (>= 5.0)
