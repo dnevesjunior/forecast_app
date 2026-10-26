@@ -1,0 +1,31 @@
+<h1>Forecast</h1>
+
+<%= form_with url: root_path, method: :get do |f| %>
+  <%= f.text_field :address, value: @address, placeholder: "Street, city, state", required: true, size: 50 %>
+  <%= f.submit "Get forecast" %>
+<% end %>
+
+<% if @error %>
+  <p role="alert"><%= @error %></p>
+<% end %>
+
+<% if @result %>
+  <h2><%= @result.location.display_name %> (<%= @result.location.zip %>)</h2>
+
+  <% if @result.from_cache %>
+    <p><strong>From cache</strong> — fetched <%= time_ago_in_words(@result.forecast.fetched_at) %> ago</p>
+  <% else %>
+    <p>Acquired from the weather service</p>
+  <% end %>
+
+  <p>Now: <strong><%= @result.forecast.current_temp %>°F</strong></p>
+  <p>Today: high <%= @result.forecast.high %>°F, low <%= @result.forecast.low %>°F</p>
+
+  <h3>Next 7 days</h3>
+  <table>
+    <tr><th>Date</th><th>High</th><th>Low</th></tr>
+    <% @result.forecast.daily.each do |day| %>
+      <tr><td><%= day.date.strftime("%a %b %-d") %></td><td><%= day.high %>°F</td><td><%= day.low %>°F</td></tr>
+    <% end %>
+  </table>
+<% end %>
