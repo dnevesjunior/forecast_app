@@ -2,7 +2,9 @@ class WeatherClient
   Error = Class.new(StandardError)
   BASE_URL = "https://api.open-meteo.com/v1/forecast"
 
-  def self.call(latitude:, longitude:) = new(latitude, longitude).call
+  def self.call(latitude:, longitude:)
+    new(latitude, longitude).call
+  end
 
   def initialize(latitude, longitude)
     @latitude, @longitude = latitude, longitude
