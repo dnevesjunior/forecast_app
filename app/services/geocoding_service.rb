@@ -6,7 +6,7 @@ class GeocodingService
 
     def self.call(address) = new(address).call
 
-    def initializer(addres) = @address = address.to_s.strip
+    def initialize(address) = @address = address.to_s.strip
 
     def call
         result = Geocoder.search(@address).first

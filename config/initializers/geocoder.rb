@@ -1,6 +1,6 @@
 Geocoder.configure(
   # Geocoding options
-  timeout: 3,                 # geocoding service timeout (secs)
+  timeout: 5,                 # geocoding service timeout (secs)
   lookup: :nominatim,         # name of geocoding service (symbol)
   # ip_lookup: :ipinfo_io,      # name of IP address geocoding service (symbol)
   # language: :en,              # ISO-639 language code
@@ -10,12 +10,13 @@ Geocoder.configure(
   # api_key: nil,               # API key for geocoding service
   cache: nil,                 # cache object (must respond to #[], #[]=, and #del)
   # Maybe add afterwards
-  http_headers: { "User-Agent" => "forecast_app (dev@example.com)" },
+  http_headers: { "User-Agent" => "forecast_app/0.1 (dneves.junior@gmail.com)" },
+  use_https: true,
 
   # Exceptions that should not be rescued by default
   # (if you want to implement custom error handling);
   # supports SocketError and Timeout::Error
-  # always_raise: [],
+  always_raise: :all
 
   # Calculation options
   # units: :mi,                 # :km for kilometers or :mi for miles
