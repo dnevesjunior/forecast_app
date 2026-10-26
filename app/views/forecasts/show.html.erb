@@ -15,7 +15,7 @@
   <% if @result.from_cache %>
     <p><strong>From cache</strong> — fetched <%= time_ago_in_words(@result.forecast.fetched_at) %> ago</p>
   <% else %>
-    <p>Fresh from the weather service</p>
+    <p>Acquired from the weather service</p>
   <% end %>
 
   <p>Now: <strong><%= @result.forecast.current_temp %>°F</strong></p>
