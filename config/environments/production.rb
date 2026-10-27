@@ -43,8 +43,15 @@ Rails.application.configure do
   # Don't log any deprecations.
   config.active_support.report_deprecations = false
 
-  # Replace the default in-process memory cache store with a durable alternative.
-  # config.cache_store = :mem_cache_store
+  # Shared cache so the 30-minute forecast window holds across all Puma workers and hosts.
+  # REDIS_URL is required in production; failing at boot beats a cache that silently isn't shared.
+  config.cache_store = :redis_cache_store, {
+    url: ENV.fetch("REDIS_URL"),
+    namespace: "forecast_app",
+    error_handler: ->(method:, returning:, exception:) {
+      Rails.logger.warn("Redis cache #{method} failed: #{exception.class}: #{exception.message}")
+    }
+  }
 
   # Enable locale fallbacks for I18n (makes lookups for any locale fall back to
   # the I18n.default_locale when a translation cannot be found).
