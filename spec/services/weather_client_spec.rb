@@ -31,7 +31,7 @@ RSpec.describe WeatherClient do
       expect(forecast.daily.first).to respond_to(:date, :high, :low)
     end
 
-    it "raises Error on a non-200 response" do
+    it "raises Error on upstream failure (503)" do
       stub_open_meteo(status: 503, body: "upstream down")
       expect { described_class.call(latitude: lat, longitude: lon) }
         .to raise_error(WeatherClient::Error, /503/)
@@ -47,6 +47,18 @@ RSpec.describe WeatherClient do
       stub_open_meteo(body: "not json")
       expect { described_class.call(latitude: lat, longitude: lon) }
         .to raise_error(WeatherClient::Error)
+    end
+
+    it "raises Error on rate limiting (429)" do
+      stub_open_meteo(status: 429, body: "Too Many Requests")
+      expect { described_class.call(latitude: lat, longitude: lon) }
+        .to raise_error(WeatherClient::Error, /429/)
+    end
+
+    it "raises Error when the response is missing expected fields" do
+      stub_open_meteo(body: { "current" => {} }.to_json)
+      expect { described_class.call(latitude: lat, longitude: lon) }
+        .to raise_error(WeatherClient::Error, /missing/)
     end
   end
 end
