@@ -32,6 +32,8 @@ RSpec.configure do |config|
 
   config.before(:each) { Rails.cache.clear }
 
+  config.include ActiveSupport::Testing::TimeHelpers
+
   # If you enable ActiveRecord support you should uncomment these lines,
   # note if you'd prefer not to run each example within a transaction, you
   # should set use_transactional_fixtures to false.

@@ -1,6 +1,7 @@
 class ForecastFetcher
   Result = Data.define(:location, :forecast, :from_cache)
   CACHE_TTL = 30.minutes
+  RACE_TTL  = 10.seconds
 
   def self.call(address)
     new(address).call
@@ -12,15 +13,17 @@ class ForecastFetcher
 
   def call
     location = GeocodingService.call(@address)
-    key = cache_key(location.zip)
+    from_cache = true
 
-    if (cached = Rails.cache.read(key))
-      return Result.new(location:, forecast: cached, from_cache: true)
+    # The block only runs on a cache miss, so from_cache ends up false exactly when we fetched.
+    # race_condition_ttl lets one process refresh an expired entry while others briefly keep
+    # serving the stale value, instead of all hitting Open-Meteo at the same moment.
+    forecast = Rails.cache.fetch(cache_key(location.zip), expires_in: CACHE_TTL, race_condition_ttl: RACE_TTL) do
+      from_cache = false
+      WeatherClient.call(latitude: location.latitude, longitude: location.longitude)
     end
 
-    forecast = WeatherClient.call(latitude: location.latitude, longitude: location.longitude)
-    Rails.cache.write(key, forecast, expires_in: CACHE_TTL)
-    Result.new(location:, forecast:, from_cache: false)
+    Result.new(location:, forecast:, from_cache:)
   end
 
   private
