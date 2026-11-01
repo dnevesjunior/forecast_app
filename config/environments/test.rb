@@ -20,7 +20,11 @@ Rails.application.configure do
 
   # Show full error reports.
   config.consider_all_requests_local = true
-  config.cache_store = :memory_store
+  config.cache_store = if ENV["REDIS_URL"].present?
+    [ :redis_cache_store, { url: ENV["REDIS_URL"], namespace: "forecast_app_test" } ]
+  else
+    :memory_store
+  end
 
   # Render exception templates for rescuable exceptions and raise for other exceptions.
   config.action_dispatch.show_exceptions = :rescuable
