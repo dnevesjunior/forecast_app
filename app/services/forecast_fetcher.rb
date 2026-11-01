@@ -18,15 +18,13 @@ class ForecastFetcher
     # The block only runs on a cache miss, so from_cache ends up false exactly when we fetched.
     # race_condition_ttl lets one process refresh an expired entry while others briefly keep
     # serving the stale value, instead of all hitting Open-Meteo at the same moment.
-    forecast = Rails.cache.fetch(cache_key(location.zip), expires_in: CACHE_TTL, race_condition_ttl: RACE_TTL) do
+    # keep a single source of truth by using location.cache_key
+    forecast = Rails.cache.fetch("forecast/#{location.cache_key}", expires_in: CACHE_TTL, race_condition_ttl: RACE_TTL) do
       from_cache = false
       WeatherClient.call(latitude: location.latitude, longitude: location.longitude)
     end
 
+    # Keyword shorthand, Ruby 3.1 - pinpoint to when start using endless methods
     Result.new(location:, forecast:, from_cache:)
   end
-
-  private
-
-  def cache_key(zip) = "forecast/#{zip}"
 end

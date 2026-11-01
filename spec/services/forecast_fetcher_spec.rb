@@ -55,4 +55,14 @@ RSpec.describe ForecastFetcher do
     expect { described_class.call("???") }.to raise_error(GeocodingService::NotFound)
     expect(WeatherClient).not_to have_received(:call)
   end
+
+  it "uses coordinates in the cache key when the location has no zip" do
+    allow(GeocodingService).to receive(:call)
+      .and_return(GeocodingService::Location.new(zip: nil, latitude: 48.8566, longitude: 2.3522, display_name: "Paris"))
+    allow(WeatherClient).to receive(:call).and_return(forecast)
+
+    described_class.call("Paris")
+
+    expect(Rails.cache.exist?("forecast/48.86,2.35")).to be(true)
+  end
 end
