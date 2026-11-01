@@ -13,6 +13,8 @@ RSpec.describe "Forecasts", type: :request do
     allow(WeatherClient).to receive(:call).and_return(forecast)
   end
 
+  after { Geocoder::Lookup::Test.reset }
+
   it "renders the form with no address" do
     get root_path
     expect(response).to have_http_status(:ok)
@@ -35,7 +37,7 @@ RSpec.describe "Forecasts", type: :request do
   it "returns 422 with a message when the address is not found" do
     allow(GeocodingService).to receive(:call).and_raise(GeocodingService::NotFound, "Address not found")
     get root_path, params: { address: "???" }
-    expect(response).to have_http_status(:unprocessable_entity)
+    expect(response).to have_http_status(:unprocessable_content)
     expect(response.body).to include("Address not found")
   end
 
@@ -44,5 +46,17 @@ RSpec.describe "Forecasts", type: :request do
     get root_path, params: { address: "1 Infinite Loop" }
     expect(response).to have_http_status(:service_unavailable)
     expect(response.body).to include("Weather service unavailable")
+  end
+
+  it "calls the geocoder and the weather client only once across repeated requests" do
+    allow(GeocodingService).to receive(:call).and_call_original
+    Geocoder::Lookup::Test.add_stub("1 Infinite Loop", [ { "coordinates" => [ 37.33, -122.03 ], "postal_code" => "95014" } ])
+    allow(Geocoder).to receive(:search).and_call_original
+
+    get root_path, params: { address: "1 Infinite Loop" }
+    get root_path, params: { address: "1 Infinite Loop" }
+
+    expect(Geocoder).to have_received(:search).once
+    expect(WeatherClient).to have_received(:call).once
   end
 end
