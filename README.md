@@ -1,216 +1,127 @@
-# Discovery Sprint — forecast_app
+# FORECAST APP
 
-Goal: be able to explain and defend every piece of this repo cold, as if a reviewer opened a random file and asked "why this?". Each item has what to know, questions a reviewer could ask, and a short hands-on exercise. Tick the box only when you can answer the questions without looking.
+A weather forecast webapp. It receives an address, contacts a Geocoding service for coordinates, fetches forecast from Open-Meteo and shows it as HTML or JSON. Rails 8, 30 minutes cache (by localization) and JSON API, with response pointing whether it came from cache or not.
 
----
-
-## 1. Rails skeleton & configuration
-
-**Know**
-- What each `rails new --skip-*` flag removed and what you'd need to add back to re-enable it
-- Zeitwerk: file path ↔ constant name rules; `app/*` autoloaded, `lib/` not by default (`config.autoload_lib`)
-- `config/initializers/*.rb`: loaded once at boot, alphabetical, after frameworks
-- Environment files: what differs between `development.rb`, `test.rb`, `production.rb` (cache store, eager load, error pages)
-- Credentials vs ENV: `credentials.yml.enc` + `master.key`, per-environment credentials, why a reviewer without `master.key` gets `nil`
-
-**Reviewer questions**
-- Why no Active Record? What would change if you added persistence later?
-- Why does `ForecastFetcher` live in `app/services` and not `lib/`?
-- What happens to `Rails.cache` in test by default, and why did you change it?
-
-**Exercise (15 min)**
-- Run `bin/rails zeitwerk:check`. Rename `forecast_fetcher.rb` to `fetcher.rb`, run it again, read the error, rename back.
-
-- [ ] Done
+Rails 8, Ruby 3.3.13, no database. Built as a take-home assessment.
 
 ---
 
-## 2. The `geocoder` gem
+## Running it
 
-**Know**
-- What a "lookup" is; how `Geocoder.configure(lookup:)` swaps providers (Nominatim, Google, Mapbox) with the same `Geocoder.search` call
-- Nominatim usage policy: identifying User-Agent, ~1 req/s, HTTPS; what "Access blocked" looks like
-- `always_raise: :all` vs the default of swallowing errors into `[]`
-- The gem's own cache (`cache:` option) and why it's off here
-- `Geocoder::Lookup::Test`: `add_stub`, `set_default_stub`, `reset`; result hash keys (`coordinates`, `postal_code`, `address`)
-- What a `Geocoder::Result` exposes: `latitude`, `longitude`, `postal_code`, `address`, `city`, `country_code`
+### With Docker (Redis included)
 
-**Reviewer questions**
-- Why a gem instead of calling Nominatim directly?
-- How would you move to Google Geocoding? What else would change (keys, quotas, result fields)?
-- What does the gem do on a timeout with default config?
+```bash
+docker compose up --build
+```
 
-**Exercise (15 min)**
-- In `rails c`, search three addresses: a full US street address, a city only, a non-US address. Inspect which have `postal_code`. Note which ones your service would reject and why.
+Then, open http://localhost:3000. `Dockerfile.dev` was used as the compose file with a `redis:7-alpine` container. Redis is used as its cache store via `REDIS_URL`.
 
-- [ ] Done
+### Locally
 
----
+``` bash
+bundle install
+bin/rails server
+```
 
-## 3. `GeocodingService` — service objects & value objects
+If `REDIS_URL` is not available, the app falls back to an in-memory cache store. Set `REDIS_URL=redis://localhost:6379/1` to use a local Redis instead.
 
-**Know**
-- The `self.call` → `new(...).call` pattern: uniform interface, instance state, single stub seam
-- `Data.define` vs `Struct` vs plain class: immutability, keyword init, `with`, equality by value, `to_h`
-- Custom error hierarchy: `Error` base, `NotFound` and `MissingZip` subclasses; why callers rescue the base
-- `rescue` on specific exceptions (`Timeout::Error`, `SocketError`) and re-raising as your own type
+### JSON API
 
-**Reviewer questions**
-- Why raise instead of returning `nil` or a result object with `success?`?
-- What's the contract of this class in one sentence?
-- Why strip the input here rather than in the controller?
+```bash
+curl -s "http://localhost:3000/forecast.json?address=1+Infinite+Loop,+Cupertino" | jq           # "cache": "miss"
+curl -s "http://localhost:3000/forecast.json?address=1+Infinite+Loop,+Cupertino" | jq .cache    # "hit"
+curl -s -i "http://localhost:3000/forecast.json" | head -1                                       # HTTP/1.1 400 Bad Request
+```
 
-**Exercise (10 min)**
-- Write, without looking, the `Location` definition and the three error classes. Compare with the file.
+Response shape:
 
-- [ ] Done
+```json
+{
+  "location": { "name": "1 Infinite Loop, Cupertino, CA 95014, USA", "zip": "95014", "latitude": 37.33, "longitude": -122.03 },
+  "forecast": {
+    "current_temp": 57.3, "high": 73.5, "low": 47.2,
+    "fetched_at": "2026-11-01T03:12:44Z",
+    "daily": [ { "date": "2026-11-01", "high": 73.5, "low": 47.2 } ]
+  },
+  "cache": "miss"
+}
+```
 
----
+Errors are received as `{ "error": "..." }`, using the same status code the HTML page uses.
 
-## 4. `WeatherClient` — HTTP from Ruby
+### Seeing the cache
 
-**Know**
-- `Net::HTTP.start(host, port, use_ssl:, open_timeout:, read_timeout:)`; difference between open and read timeout
-- `URI.encode_www_form` and why you don't build query strings by hand
-- `Net::HTTPSuccess` and the response class hierarchy; `response.code` vs `is_a?`
-- `JSON.parse` failure modes; `Hash#fetch` + `KeyError` as a shape check
-- Open-Meteo request params used (`current`, `daily`, `temperature_unit`, `timezone=auto`, `forecast_days`) and the response shape (parallel arrays in `daily`)
-- Why stdlib over Faraday/HTTParty for one endpoint; when you *would* reach for Faraday (middleware, retries, instrumentation)
+With the Docker setup running, you can run a few requests and check with the following commands:
 
-**Reviewer questions**
-- What happens if Open-Meteo is slow? Where does the request give up?
-- How would you add retries? A circuit breaker?
-- Why is the unit hardcoded to Fahrenheit and where would a Celsius toggle live?
+```bash
+docker compose exec redis redis-cli -n 1 keys '*'
+docker compose exec redis redis-cli -n 1 ttl 'forecast/95014'
+```
 
-**Exercise (20 min)**
-- Change the request to `temperature_unit=celsius` in `rails c` via a one-off `Net::HTTP` call and confirm the payload's `current_units` changes. Revert.
+The TTL shows about 35 minutes, not 30. This is instentional and is explained on `race_condition_ttl` under design decisions.
 
-- [ ] Done
+### Tests
+
+```bash
+bundle exec rspec
+```
 
 ---
 
-## 5. `Forecast` / `Forecast::Day` — modelling without a database
+## How a request flows
 
-**Know**
-- `class Forecast < Data.define(...)` vs `Data.define(...) do ... end` and the constant-scoping gotcha you hit
-- Why value objects are safe to put in a cache: immutable, `Marshal`-able, equal by value
-- Where domain objects live when they aren't AR models (`app/models` is fine; Rails doesn't care)
+GET /?address=...   or   GET /forecast.json?address=...
+  -> ForecastsController   validates length (<= 200) and characters -> 400 if invalid
+  -> GeocodingService      Rails.cache "geocode/[normalized address]", 24h miss: Geocoder (Nominatim) -> Location (zip, lat, lon)
+  -> ForecastFetcher       Rails.cache "forecast/[zip or rounded lat,lon]", 30min miss: WeatherClient (Open-Meteo) -> Forecast
+  -> HTML view, or ForecastSerializer -> JSON with "cache": "hit" | "miss"
+```
 
-**Reviewer questions**
-- How is this different from an AR model? What do you lose, what do you gain?
-- If you needed to add `unit` or `timezone`, what breaks?
-
-**Exercise (10 min)**
-- In `rails c`: build a `Forecast`, call `.with(current_temp: 0)`, `.to_h`, `==` against a copy. Try to mutate it.
-
-- [ ] Done
+A repeated request for the same address inside 30 minutes makes no outbound HTTP calls. Both the geocoding result and the forecast come from the cache.
 
 ---
 
-## 6. `ForecastFetcher` — orchestration & `Rails.cache`
+## Design Decisions
 
-**Know**
-- `Rails.cache` API: `read`, `write(expires_in:)`, `fetch`, `exist?`, `delete`, `clear`
-- Why `fetch` can't report hit/miss and the read-then-write alternative
-- Stores: `:null_store`, `:memory_store` (per process, lost on restart), `:file_store`, `:mem_cache_store`, `:redis_cache_store`, Solid Cache (DB-backed); what Rails 8 generates by default and what `--skip-solid` left you with in production
-- Cache key design: `forecast/<zip>`, namespace, why zip and not the raw address; what a normalized-address key would look like for geocoding
-- Thundering herd / dog-pile on expiry and `race_condition_ttl`
-- Why failures are never cached
+**Two cache layers with different TTLs.** Geocoding results are cached for 24 hours under the normalized address (downcased, whitespace squished), because an address always stays the same. Forecasts are cached for 30 minutes under the location key, because forecast does not always stays the same. Caching only the forecast would still send one Nominatim request per page load, and Nominatim allows 1 request per second, so that breaks under any real traffic.
 
-**Reviewer questions**
-- Two Puma workers, one request each for the same zip within 30 min: how many Open-Meteo calls with memory store? With Redis?
-- Why geocode on every request even on a cache hit?
-- What's the worst case if Nominatim goes down? If Open-Meteo goes down?
+**`race_condition_ttl` against cache stampedes.** When a forecast entry expires, every concurrent request would miss at once and all of them would call Open-Meteo. With `race_condition_ttl: 10.seconds`, the first request to see the expired entry extends it briefly and refreshes it; the others keep serving the stale value for those seconds instead of piling onto the upstream API. Rails stores the entry in Redis with an extra 5 minutes of TTL so the stale value is physically there to be served, which is why `redis-cli ttl` reports about 35 minutes.
 
-**Exercise (20 min)**
-- Start `bin/rails s`, submit an address twice, watch the log for the Open-Meteo call appearing once. Restart the server, submit again, confirm it's fresh (memory store lost). Write one sentence on what Redis would change.
+**Location key: zip when available, rounded coordinates otherwise.** The original version raised when the geocoder returned no postal code, which rejected valid places all over the world. Now `Location#cache_key` returns the zip when there is one and otherwise latitude and longitude rounded to two decimals, which is roughly 1 km. Nearby points without a zip share a forecast, which is the behaviour you want from a weather cache.
 
-- [ ] Done
+**Input validation before any network call.** The controller checks the address length (200 characters) and allowed characters (Unicode letters and digits, spaces and the punctuation real addresses use) before calling any service. A malformed address never reaches the geocoder.
+
+**One error type per service, mapped to HTTP status.** `GeocodingService::NotFound` and `GeocodingService::Error` become 422 (we tried and could not resolve the address); `WeatherClient::Error` becomes 503 (the upstream is down); invalid input is 400 (the client's fault, we did not try). The same mapping serves HTML and JSON.
+
+**No database.** Nothing in this app needs to persist beyond the cache. Adding a database would mean migrations, a `db:prepare` step and a second service in Docker for no benefit. If the product needed history or user accounts, that would be the first thing to add.
+
+**A separate serializer for the JSON contract.** `ForecastSerializer` builds the JSON payload from the internal `Result` object. The JSON shape is a public contract, while the internal objects are not, and I did not want a rename in one to silently change the other.
+
+**Value objects.** `Location`, `Forecast` and `Result` are `Data.define` objects: immutable, compared by value and cheap to serialize into the cache.
 
 ---
 
-## 7. Controller & view
+## Trade-offs and what I would change for production
 
-**Know**
-- Thin controller: map outcomes to HTTP, nothing else; `rescue` in an action vs `rescue_from`
-- Status codes chosen: 200, 422 (`:unprocessable_content`), 503; why not 404 for a bad address, why not 500
-- `form_with url:, method: :get`: GET for idempotent lookups, shareable URL, no CSRF token needed
-- `params[:address].to_s.strip`, `required` on the input, and what server-side validation exists vs doesn't
-- `time_ago_in_words`, `strftime`, ERB escaping (`display_name` from a third party is rendered escaped by default)
-
-**Reviewer questions**
-- Where's input validation? What stops a 10 kB address?
-- Why GET and not POST?
-- How would you add Turbo so only the result block refreshes?
-
-**Exercise (10 min)**
-- Submit `<script>alert(1)</script>` as the address. Confirm it renders escaped in the error message / input value.
-
-- [ ] Done
+- **Nominatim is fine for a demo, not for production.** It has a hard 1 request/second limit and no SLA. The cache keeps us well under the limit for repeated addresses, but a burst of new addresses would still hit it. In production I would use a paid geocoding provider, or put geocoding behind a rate-limited queue.
+- **The API has no authentication or rate limiting.** Anyone who can reach it can use it. A real deployment would need at least an API key and a per-client rate limit.
+- **In-memory cache is per process.** Two Puma workers would each keep their own cache, so hit rates drop and the upstream limits get closer. That is why the Docker setup uses Redis; production would too.
+- **`redis-cli keys '*'`** is only for looking around in development. On a large keyspace it blocks the server; `scan` is the production-safe equivalent.
+- **No ETag or HTTP caching on the JSON endpoint.** `fetched_at` tells the client how old the data is, but a conditional request would save bandwidth.
+- **Address normalization is simple.** "1 Infinite Loop" and "One Infinite Loop" are different cache keys. Canonicalizing through the geocoder's own output would merge them, at the cost of one geocoding call per variant.
 
 ---
 
-## 8. Test suite
+## Testing
 
-**Know**
-- Unit vs request specs: what each layer stubs and why (fixtures for the clients, `allow(...).to receive(:call)` for the orchestrator, both for requests)
-- WebMock: `disable_net_connect!`, `stub_request(...).with(query: hash_including(...))`, `.to_return`, `.to_timeout`; what the "Real HTTP connections are disabled" error means
-- `rspec-mocks`: `allow` vs `expect`, `have_received(...).once/.twice`, `and_raise`, partial doubles on classes
-- `file_fixture` and `config.file_fixture_path`
-- `ActiveSupport::Testing::TimeHelpers`: `travel`, `travel_to`, `freeze_time`; why `travel 31.minutes` expires the memory store
-- `Rails.cache.clear` before each example and why order-dependent tests are a smell
-- The mutation check habit: break one line, confirm red, restore
+RSpec, with WebMock blocking all real network access and the Geocoder gem in `:test` mode with stubbed lookups. `Rails.cache` is cleared before every example.
 
-**Reviewer questions**
-- Why stub `GeocodingService` and `WeatherClient` in the fetcher spec instead of using fixtures again?
-- What would a Capybara system spec add that the request spec doesn't?
-- How do you know the specs would catch a change in Open-Meteo's response shape?
+The specs that matter most for this challenge:
 
-**Exercise (15 min)**
-- Delete `WebMock.disable_net_connect!`, run the suite, observe nothing fails. Explain why that's dangerous. Put it back.
+- `spec/services/geocoding_service_spec.rb` is used to prove that repeated and different formats of the same address hit the geocoder once, that failed lookups are not cached, and that `Location#cache_key` falls back to rounded coordinates.
+- `spec/services/forecast_fetcher_spec.rb` is used to prove the forecast cache, the `from_cache` flag and the coordinate-based key.
+- `spec/requests/forecasts_spec.rb` is used to cover the HTML page, the JSON endpoint (miss, hit, 400, 422), input validation, and one end-to-end check that two requests for the same address call `Geocoder.search` and `WeatherClient` exactly once.
 
-- [ ] Done
+CI runs Brakeman, bundler-audit, importmap audit, RuboCop and the full RSpec suite against a real Redis service container, so the caching behaviour described here is tested on the same store the Docker setup uses.
 
 ---
-
-## 9. Tooling, CI, repo hygiene
-
-**Know**
-- `rubocop-rails-omakase`: what it enforces (space inside array brackets, double quotes, trailing newline) and why you follow it instead of overriding
-- Brakeman: what it scans for; why a no-DB app still gets value (XSS, open redirect, mass assignment)
-- The generated GitHub Actions workflow: jobs, `ruby/setup-ruby` and the `.ruby-version` ↔ runner image constraint you hit
-- `.ruby-version` + `Gemfile` `ruby file:` directive; `Gemfile.lock` records the Ruby version
-- Branch per PR, commit messages that mirror the blueprint, `git grep -i apple` before push
-
-**Reviewer questions**
-- Walk me through what CI runs and what would fail if I removed a spec.
-- Why Ruby 3.3.13 and not 3.4?
-
-**Exercise (10 min)**
-- Read `.github/workflows/ci.yml` top to bottom and say what each step does in one line.
-
-- [ ] Done
-
----
-
-## 10. Interview-ready answers (write each in 3–5 sentences, then say it out loud)
-
-- [ ] "Walk me through a request from form submit to rendered page."
-- [ ] "Why these two external APIs?"
-- [ ] "Explain your caching strategy and its limits."
-- [ ] "What did you deliberately not build, and why?"
-- [ ] "What would you change for production traffic?"
-- [ ] "Where would this break first under load or failure?"
-
----
-
-## Sprint plan
-
-| Day | Blocks |
-|-----|--------|
-| 1 | §1, §2, §3 |
-| 2 | §4, §5, §6 |
-| 3 | §7, §8 |
-| 4 | §9, §10 — then record yourself answering §10 and listen back |
-
-Rule: no block is "done" from reading alone. Each has an exercise; do it.
