@@ -1,7 +1,7 @@
 class ForecastsController < ApplicationController
   MAX_ADDRESS_LENGTH = 200
   ADDRESS_FORMAT = /\A[\p{L}\p{N}\s,.'#\-\/]+\z/
-  
+
   rescue_from GeocodingService::Error, with: :unresolvable_address
   rescue_from WeatherClient::Error,    with: :weather_unavailable
 
