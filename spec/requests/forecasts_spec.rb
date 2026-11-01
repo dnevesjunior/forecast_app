@@ -36,7 +36,7 @@ RSpec.describe "Forecasts", type: :request do
 
   it "returns 422 with a message when the address is not found" do
     allow(GeocodingService).to receive(:call).and_raise(GeocodingService::NotFound, "Address not found")
-    get root_path, params: { address: "???" }
+    get root_path, params: { address: "123 Test Street" }
     expect(response).to have_http_status(:unprocessable_content)
     expect(response.body).to include("Address not found")
   end
@@ -58,5 +58,40 @@ RSpec.describe "Forecasts", type: :request do
 
     expect(Geocoder).to have_received(:search).once
     expect(WeatherClient).to have_received(:call).once
+  end
+
+  describe "GET /forecast.json" do
+    it "returns the forecast with cache status miss on the first request" do
+      get "/forecast.json", params: { address: "1 Infinite Loop" }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.media_type).to eq("application/json")
+      body = response.parsed_body
+      expect(body["cache"]).to eq("miss")
+      expect(body.dig("forecast", "current_temp")).to eq(57.3)
+      expect(body.dig("location", "zip")).to eq("95014")
+    end
+
+    it "returns cache status hit on a repeat request" do
+      get "/forecast.json", params: { address: "1 Infinite Loop" }
+      get "/forecast.json", params: { address: "1 Infinite Loop" }
+
+      expect(response.parsed_body["cache"]).to eq("hit")
+    end
+
+    it "returns 400 as JSON when the address is missing" do
+      get "/forecast.json"
+
+      expect(response).to have_http_status(:bad_request)
+      expect(response.parsed_body["error"]).to include("required")
+    end
+
+    it "returns 422 as JSON when the address is not found" do
+      allow(GeocodingService).to receive(:call).and_raise(GeocodingService::NotFound, "Address not found")
+      get "/forecast.json", params: { address: "123 Test Street" }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body["error"]).to eq("Address not found")
+    end
   end
 end
