@@ -70,6 +70,7 @@ bundle exec rspec
 
 ## How a request flows
 
+```
 GET /?address=...   or   GET /forecast.json?address=...
   -> ForecastsController   validates length (<= 200) and characters -> 400 if invalid
   -> GeocodingService      Rails.cache "geocode/[normalized address]", 24h miss: Geocoder (Nominatim) -> Location (zip, lat, lon)
